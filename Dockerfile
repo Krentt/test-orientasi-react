@@ -1,22 +1,19 @@
 # build stage
-FROM registry.access.redhat.com/ubi9/nodejs-20 AS build
-
+FROM node:25.3.0-alpine AS build
 WORKDIR /app
-
-# copy source
 COPY . .
+RUN npm install && npm run build
 
-# FIX PERMISSION
-RUN chown -R 1001:0 /app && chmod -R g+rwX /app
-
-# install & build
-RUN npm ci && npm run build
-
-
-# runtime stage
-FROM registry.access.redhat.com/ubi9/nginx-124
-
+# run stage
+FROM nginx:alpine
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /app/dist /usr/share/nginx/html
+
+# OpenShift compatibility:
+# 1. Support running as arbitrary user (random UID) in root group (GID 0)
+# 2. Grant group write permissions to necessary directories
+RUN chmod -R g+rwx /var/cache/nginx /var/run /var/log/nginx && \
+    chgrp -R 0 /var/cache/nginx /var/run /var/log/nginx && \
+    sed -i.bak 's/^user/#user/' /etc/nginx/nginx.conf
 
 EXPOSE 8080
